@@ -1,38 +1,71 @@
-use rustyline::error::ReadlineError;
-use rustyline::Editor;
-fn main() {
-    // This line creates an Editor with the default configuration options.
-    let mut repl = Editor::<()>::new();
-    // This if statement loads a file with the history of commands
-    // If the file does not exists, it creates one.
-    if repl.load_history("history.txt").is_err() {
-        println!("No previous history.");
+extern crate clap;
+mod repl;
+
+use clap::{crate_version, App};
+use repl::{get_config, REPLHelper};
+use rustyline::{error::ReadlineError, Editor};
+
+fn main() -> rustyline::Result<()> {
+    env_logger::init();
+
+    let _matches = App::new("sqlite-rs")
+        .version("0.0.1")
+        .author("sang")
+        .about("test case sqlite")
+        .get_matches();
+
+    let config = get_config();
+    let helper = REPLHelper::new();
+
+    let mut repl = Editor::with_config(config);
+    repl.set_helper(Some(helper));
+
+    if repl.load_history("history").is_err() {
+        println!("No precious history.")
     }
-    // This is our infinite loop. We will be here until the user terminates the program.
+    let mut count = 1;
     loop {
-        // This line asks the user to input a command. You can add whatever you want in here as a prefix.
-        let readline = repl.readline(">> ");
-        
-        // The readline method returns an Result. Which we now use a match statement to filter the result.
+        if count == 1 {
+            println!(
+                "{}{}{}{}{}",
+                format!("Rust-SQLite - {}\n", crate_version!()),
+                "Enter .exit to quit.\n",
+                "Enter .help for usage hints.\n",
+                "Connected to a transient in-memory database.\n",
+                "Use '.open FILENAME' to reopen on a persistent database."
+            );
+        }
+        let p = format!("rust-sqlite | {}> ", count);
+        repl.helper_mut().expect("No helper found").colored_prompt =
+            format!("\x1b[1;32m{}\x1b[0m", p);
+
+        let readline = repl.readline(&p);
         match readline {
-            Ok(line) => {
-                repl.add_history_entry(line.as_str());
-                println!("Line: {}", line);
-            },
+            Ok(command) => {
+                repl.add_history_entry(command.as_str());
+                // println!("Command: {}", line);
+                if command.eq(".exit") {
+                    break;
+                } else {
+                    println!(
+                        "Error: unknown command or invalid arguments: '{}'. Enter '.help'",
+                        &command
+                    );
+                }
+            }
             Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
-                break
-            },
+                break;
+            }
             Err(ReadlineError::Eof) => {
-                println!("CTRL-D");
-                break
-            },
+                break;
+            }
             Err(err) => {
                 println!("Error: {:?}", err);
-                break
+                break;
             }
         }
+        count += 1;
     }
-    // Here we are saving the commands into the file. Until now they are stored in memory.
-    repl.save_history("history.txt").unwrap();
+    repl.append_history("history").unwrap();
+    Ok(())
 }
